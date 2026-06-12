@@ -296,7 +296,12 @@ module.exports = async (env, argv) => {
         // but they are "smart" and have builds for both ESM and CJS depending on if import or require is used.
         // This forces the ESM version to be used otherwise we end up with multiple instances of the libraries,
         // and for example AFRAME.THREE.Object3D !== THREE.Object3D in Hubs code, which breaks many things.
-        three$: path.resolve(__dirname, "./node_modules/three/build/three.module.js"),
+        // Consume upstream `three` (integrity-pinned via package-lock) plus an auditable
+        // patch-package stack (patches/three+0.141.0.patch) instead of an opaque prebuilt fork.
+        // Aliasing to the ESM source entry point (rather than build/three.module.js) ensures the
+        // patched sources are what gets bundled, while still resolving every bare `three` import to
+        // a single instance (so AFRAME.THREE.Object3D === THREE.Object3D holds).
+        three$: path.resolve(__dirname, "./node_modules/three/src/Three.js"),
         bitecs$: path.resolve(__dirname, "./node_modules/bitecs/dist/index.mjs"),
 
         // UMD libraries that need explicit module resolution to work with ES6 imports
