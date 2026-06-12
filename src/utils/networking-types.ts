@@ -25,6 +25,10 @@ export interface UpdateMessageBase {
   lastOwnerTime: number;
   timestamp: number;
   owner: ClientID;
+  // Server-attributed id of the peer that sent this update. Set from the message's
+  // from_session_id on receipt; preserved on stored updates so the authorization
+  // guard can run when a delayed update is replayed after its create.
+  fromClientId?: ClientID;
 }
 export interface CursorBufferUpdateMessage extends UpdateMessageBase {
   componentIds: number[];
