@@ -1,0 +1,1175 @@
+diff --git a/node_modules/three/src/Three.js b/node_modules/three/src/Three.js
+index 605a974..5fdce4f 100644
+--- a/node_modules/three/src/Three.js
++++ b/node_modules/three/src/Three.js
+@@ -65,6 +65,7 @@ export { AmbientLight } from './lights/AmbientLight.js';
+ export { AmbientLightProbe } from './lights/AmbientLightProbe.js';
+ export { Light } from './lights/Light.js';
+ export { LightProbe } from './lights/LightProbe.js';
++export { ReflectionProbe } from './lights/ReflectionProbe.js';
+ export { StereoCamera } from './cameras/StereoCamera.js';
+ export { PerspectiveCamera } from './cameras/PerspectiveCamera.js';
+ export { OrthographicCamera } from './cameras/OrthographicCamera.js';
+diff --git a/node_modules/three/src/animation/PropertyBinding.js b/node_modules/three/src/animation/PropertyBinding.js
+index 8e3b3d6..9e3abc7 100644
+--- a/node_modules/three/src/animation/PropertyBinding.js
++++ b/node_modules/three/src/animation/PropertyBinding.js
+@@ -350,6 +350,7 @@ class PropertyBinding {
+ 		}
+ 
+ 		this.targetObject.matrixWorldNeedsUpdate = true;
++		this.targetObject.matrixNeedsUpdate = true;
+ 
+ 	}
+ 
+@@ -372,6 +373,7 @@ class PropertyBinding {
+ 
+ 		this.resolvedProperty[ this.propertyIndex ] = buffer[ offset ];
+ 		this.targetObject.matrixWorldNeedsUpdate = true;
++		this.targetObject.matrixNeedsUpdate = true;
+ 
+ 	}
+ 
+@@ -394,6 +396,7 @@ class PropertyBinding {
+ 
+ 		this.resolvedProperty.fromArray( buffer, offset );
+ 		this.targetObject.matrixWorldNeedsUpdate = true;
++		this.targetObject.matrixNeedsUpdate = true;
+ 
+ 	}
+ 
+diff --git a/node_modules/three/src/audio/PositionalAudio.js b/node_modules/three/src/audio/PositionalAudio.js
+index 9c2a7a2..6771006 100644
+--- a/node_modules/three/src/audio/PositionalAudio.js
++++ b/node_modules/three/src/audio/PositionalAudio.js
+@@ -103,6 +103,16 @@ class PositionalAudio extends Audio {
+ 
+ 		super.updateMatrixWorld( force );
+ 
++		let setInitial = false;
++
++		if ( ! this._lastPosition ) {
++
++			setInitial = true;
++			this._lastPosition = new Vector3();
++			this._lastOrientation = new Vector3();
++
++		}
++
+ 		if ( this.hasPlaybackControl === true && this.isPlaying === false ) return;
+ 
+ 		this.matrixWorld.decompose( _position, _quaternion, _scale );
+@@ -111,6 +121,21 @@ class PositionalAudio extends Audio {
+ 
+ 		const panner = this.panner;
+ 
++		// Only apply changes to the pannernode if position or orientation have changed.
++		if (
++			! setInitial &&
++			Math.abs( _position.x - this._lastPosition.x ) < Number.EPSILON &&
++			Math.abs( _position.y - this._lastPosition.y ) < Number.EPSILON &&
++			Math.abs( _position.z - this._lastPosition.z ) < Number.EPSILON &&
++			Math.abs( _orientation.x - this._lastOrientation.x ) < Number.EPSILON &&
++			Math.abs( _orientation.y - this._lastOrientation.y ) < Number.EPSILON &&
++			Math.abs( _orientation.z - this._lastOrientation.z ) < Number.EPSILON
++		) {
++
++			return;
++
++		}
++
+ 		if ( panner.positionX ) {
+ 
+ 			// code path for Chrome and Firefox (see #14393)
+@@ -131,6 +156,14 @@ class PositionalAudio extends Audio {
+ 
+ 		}
+ 
++		this._lastPosition.x = _position.x;
++		this._lastPosition.y = _position.y;
++		this._lastPosition.z = _position.z;
++
++		this._lastOrientation.x = _orientation.x;
++		this._lastOrientation.y = _orientation.y;
++		this._lastOrientation.z = _orientation.z;
++
+ 	}
+ 
+ }
+diff --git a/node_modules/three/src/constants.js b/node_modules/three/src/constants.js
+index e2d666a..d1d6cd4 100644
+--- a/node_modules/three/src/constants.js
++++ b/node_modules/three/src/constants.js
+@@ -53,6 +53,7 @@ export const ReinhardToneMapping = 2;
+ export const CineonToneMapping = 3;
+ export const ACESFilmicToneMapping = 4;
+ export const CustomToneMapping = 5;
++export const LUTToneMapping = 6;
+ 
+ export const UVMapping = 300;
+ export const CubeReflectionMapping = 301;
+diff --git a/node_modules/three/src/core/Object3D.js b/node_modules/three/src/core/Object3D.js
+index ea06b54..61663d9 100644
+--- a/node_modules/three/src/core/Object3D.js
++++ b/node_modules/three/src/core/Object3D.js
+@@ -11,7 +11,9 @@ let _object3DId = 0;
+ 
+ const _v1 = /*@__PURE__*/ new Vector3();
+ const _q1 = /*@__PURE__*/ new Quaternion();
++const _q2 = /*@__PURE__*/ new Quaternion();
+ const _m1 = /*@__PURE__*/ new Matrix4();
++const _m2 = /*@__PURE__*/ new Matrix4();
+ const _target = /*@__PURE__*/ new Vector3();
+ 
+ const _position = /*@__PURE__*/ new Vector3();
+@@ -25,6 +27,14 @@ const _zAxis = /*@__PURE__*/ new Vector3( 0, 0, 1 );
+ const _addedEvent = { type: 'added' };
+ const _removedEvent = { type: 'removed' };
+ 
++const _zeroPos = new Vector3( 0, 0, 0 );
++const _zeroQuat = new Quaternion();
++const _oneScale = new Vector3( 1, 1, 1 );
++const _identity = new Matrix4();
++_identity.identity();
++
++const _epsilon = 0.00000000001;
++
+ class Object3D extends EventDispatcher {
+ 
+ 	constructor() {
+@@ -100,11 +110,18 @@ class Object3D extends EventDispatcher {
+ 		this.matrixAutoUpdate = Object3D.DefaultMatrixAutoUpdate;
+ 		this.matrixWorldNeedsUpdate = false;
+ 
++		// [HUBS] Special flags to avoid unnecessary matrices update
++		this.matrixNeedsUpdate = false;
++		this.childrenNeedMatrixWorldUpdate = false;
++		this.matrixIsModified = false;
++		this.hasHadFirstMatrixUpdate = false;
++
+ 		this.layers = new Layers();
+ 		this.visible = true;
+ 
+ 		this.castShadow = false;
+ 		this.receiveShadow = false;
++		this.reflectionProbeMode = false;
+ 
+ 		this.frustumCulled = true;
+ 		this.renderOrder = 0;
+@@ -127,6 +144,8 @@ class Object3D extends EventDispatcher {
+ 
+ 		this.matrix.decompose( this.position, this.quaternion, this.scale );
+ 
++		this._handleMatrixModification( this );
++
+ 	}
+ 
+ 	applyQuaternion( q ) {
+@@ -285,6 +304,8 @@ class Object3D extends EventDispatcher {
+ 
+ 		}
+ 
++		_q2.copy( this.quaternion );
++
+ 		this.quaternion.setFromRotationMatrix( _m1 );
+ 
+ 		if ( parent ) {
+@@ -295,6 +316,16 @@ class Object3D extends EventDispatcher {
+ 
+ 		}
+ 
++		if ( _q2.near( this.quaternion, _epsilon ) ) {
++
++			this.quaternion.copy( _q2 );
++
++		} else {
++
++			this.matrixNeedsUpdate = true;
++
++		}
++
+ 	}
+ 
+ 	add( object ) {
+@@ -328,6 +359,7 @@ class Object3D extends EventDispatcher {
+ 
+ 			object.parent = this;
+ 			this.children.push( object );
++			object.matrixWorldNeedsUpdate = true;
+ 
+ 			object.dispatchEvent( _addedEvent );
+ 
+@@ -362,6 +394,13 @@ class Object3D extends EventDispatcher {
+ 			object.parent = null;
+ 			this.children.splice( index, 1 );
+ 
++			if ( object.hasHadFirstMatrixUpdate && ! object.matrixIsModified ) {
++
++				object.hasHadFirstMatrixUpdate = false;
++				object.matrixWorld = object.cachedMatrixWorld;
++
++			}
++
+ 			object.dispatchEvent( _removedEvent );
+ 
+ 		}
+@@ -554,76 +593,161 @@ class Object3D extends EventDispatcher {
+ 
+ 		this.matrixWorldNeedsUpdate = true;
+ 
+-	}
+-
+-	updateMatrixWorld( force ) {
+-
+-		if ( this.matrixAutoUpdate ) this.updateMatrix();
++		this._handleMatrixModification( this );
+ 
+-		if ( this.matrixWorldNeedsUpdate || force ) {
++	}
+ 
+-			if ( this.parent === null ) {
++	// [HUBS] Computes this object's matrices and then the recursively computes the matrices of all the children.
++	//
++	// forceWorldUpdate - If true and the object is visible, will force the world matrix to be updated for
++	// this node and all of its children.
++	//
++	// includeInvisible - If true, does not ignore non-visible objects.
++	updateMatrixWorld( forceWorldUpdate, includeInvisible ) {
+ 
+-				this.matrixWorld.copy( this.matrix );
++		if ( ! this.visible && ! includeInvisible ) {
+ 
+-			} else {
++			if ( forceWorldUpdate ) {
+ 
+-				this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
++				this.matrixWorldNeedsUpdate = true;
+ 
+ 			}
+ 
+-			this.matrixWorldNeedsUpdate = false;
+-
+-			force = true;
++			return;
+ 
+ 		}
+ 
+-		// update children
++		// Do not recurse upwards, since this is recursing downwards
++		this.updateMatrices( false, forceWorldUpdate, true );
+ 
+ 		const children = this.children;
++		const forceChildrenWorldUpdate = this.childrenNeedMatrixWorldUpdate || forceWorldUpdate;
+ 
+ 		for ( let i = 0, l = children.length; i < l; i ++ ) {
+ 
+-			children[ i ].updateMatrixWorld( force );
++			children[ i ].updateMatrixWorld( forceChildrenWorldUpdate, includeInvisible );
+ 
+ 		}
+ 
++		this.childrenNeedMatrixWorldUpdate = false;
++
+ 	}
+ 
++
++	// [HUBS] Updates this function to use updateMatrices(). In general our code should prefer calling updateMatrices() directly,
++	// patching this for compatibility upstream, namely with Box3.expandToObject and Object3D.attach
+ 	updateWorldMatrix( updateParents, updateChildren ) {
+ 
+-		const parent = this.parent;
++		this.updateMatrices( false, false, ! updateParents );
+ 
+-		if ( updateParents === true && parent !== null ) {
++		if ( updateChildren ) {
+ 
+-			parent.updateWorldMatrix( true, false );
++			const children = this.children;
++
++			for ( let i = 0, l = children.length; i < l; i ++ ) {
++
++				children[ i ].updateMatrixWorld( false, false );
++
++			}
++
++			this.childrenNeedMatrixWorldUpdate = false;
+ 
+ 		}
+ 
+-		if ( this.matrixAutoUpdate ) this.updateMatrix();
++	}
+ 
+-		if ( this.parent === null ) {
++	// [HUBS] By the end of this function this.matrix reflects the updated local matrix
++	// and this.matrixWorld reflects the updated world matrix, taking into account
++	// parent matrices.
++	//
++	// forceLocalUpdate - Forces the local matrix to be updated regardless of if it has not
++	// been marked dirty.
++	//
++	// forceWorldUpdate - Forces the world matrix to be updated regardless of if the local matrix
++	// has been updated since the last update.
++	//
++	// skipParents - unless true, all parent matricies are updated before updating this object's
++	// local and world matrix.
++	//
++	updateMatrices( forceLocalUpdate, forceWorldUpdate, skipParents ) {
++
++		if ( ! this.hasHadFirstMatrixUpdate ) {
++
++			if (
++				! this.position.equals( _zeroPos ) ||
++					! this.quaternion.equals( _zeroQuat ) ||
++					! this.scale.equals( _oneScale ) ||
++					! this.matrix.equals( _identity )
++			) {
++
++				// Only update the matrix the first time if its non-identity, this way
++				// this.matrixIsModified will remain false until the default
++				// identity matrix is updated.
++				this.updateMatrix();
+ 
+-			this.matrixWorld.copy( this.matrix );
++			}
+ 
+-		} else {
++			this.hasHadFirstMatrixUpdate = true;
++			this.matrixWorldNeedsUpdate = true;
++			this.cachedMatrixWorld = this.matrixWorld;
++
++		} else if ( this.matrixNeedsUpdate || this.matrixAutoUpdate || forceLocalUpdate ) {
+ 
+-			this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
++			// updateMatrix() sets matrixWorldNeedsUpdate = true
++			this.updateMatrix();
++			this.matrixNeedsUpdate = false;
+ 
+ 		}
+ 
+-		// update children
++		if ( ! skipParents && this.parent ) {
+ 
+-		if ( updateChildren === true ) {
++			this.parent.updateMatrices( false, forceWorldUpdate, false );
++			this.matrixWorldNeedsUpdate = this.matrixWorldNeedsUpdate || this.parent.childrenNeedMatrixWorldUpdate;
+ 
+-			const children = this.children;
++		}
+ 
+-			for ( let i = 0, l = children.length; i < l; i ++ ) {
++		if ( this.matrixWorldNeedsUpdate || forceWorldUpdate ) {
++
++			_m2.copy( this.matrixWorld );
++
++			if ( this.parent === null ) {
++
++				this.matrixWorld.copy( this.matrix );
++
++			} else {
++
++				// If the matrix is unmodified, it is the identity matrix,
++				// and hence we can use the parent's world matrix directly.
++				//
++				// Note this assumes all callers will either not pass skipParents=true
++				// *or* will update the parent themselves beforehand as is done in
++				// updateMatrixWorld.
++				if ( ! this.matrixIsModified ) {
++
++					this.matrixWorld = this.parent.matrixWorld;
++
++				} else {
++
++					// Once matrixIsModified === true, this.matrixWorld has been updated to be a local
++					// copy, not a reference to this.parent.matrixWorld (see updateMatrix/applyMatrix)
++					this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
++
++				}
+ 
+-				children[ i ].updateWorldMatrix( false, true );
++			}
++
++			if ( _m2.near( this.matrixWorld, _epsilon ) ) {
++
++				this.matrixWorld.copy( _m2 );
++
++			} else {
++
++				this.childrenNeedMatrixWorldUpdate = true;
+ 
+ 			}
+ 
++			this.matrixWorldNeedsUpdate = false;
++
+ 		}
+ 
+ 	}
+@@ -919,6 +1043,23 @@ class Object3D extends EventDispatcher {
+ 
+ 	}
+ 
++	_handleMatrixModification() {
++
++		if ( ! this.matrixIsModified ) {
++
++			this.matrixIsModified = true;
++
++			if ( this.cachedMatrixWorld ) {
++
++				this.cachedMatrixWorld.copy( this.matrixWorld );
++				this.matrixWorld = this.cachedMatrixWorld;
++
++			}
++
++		}
++
++	}
++
+ }
+ 
+ Object3D.DefaultUp = new Vector3( 0, 1, 0 );
+diff --git a/node_modules/three/src/core/Raycaster.js b/node_modules/three/src/core/Raycaster.js
+index c4f0c37..86a8f29 100644
+--- a/node_modules/three/src/core/Raycaster.js
++++ b/node_modules/three/src/core/Raycaster.js
+@@ -87,11 +87,9 @@ function ascSort( a, b ) {
+ 
+ function intersectObject( object, raycaster, intersects, recursive ) {
+ 
+-	if ( object.layers.test( raycaster.layers ) ) {
++	if ( ! object.visible ) return;
+ 
+-		object.raycast( raycaster, intersects );
+-
+-	}
++	object.raycast( raycaster, intersects );
+ 
+ 	if ( recursive === true ) {
+ 
+diff --git a/node_modules/three/src/extras/PMREMGenerator.js b/node_modules/three/src/extras/PMREMGenerator.js
+index 9e752b9..d87d192 100644
+--- a/node_modules/three/src/extras/PMREMGenerator.js
++++ b/node_modules/three/src/extras/PMREMGenerator.js
+@@ -261,7 +261,7 @@ class PMREMGenerator {
+ 
+ 		const cubeUVRenderTarget = _createRenderTarget( width, height, params );
+ 
+-		if ( this._pingPongRenderTarget === null || this._pingPongRenderTarget.width !== width ) {
++		if ( this._pingPongRenderTarget === null || this._pingPongRenderTarget.width !== width || this._pingPongRenderTarget.height !== height ) {
+ 
+ 			if ( this._pingPongRenderTarget !== null ) {
+ 
+diff --git a/node_modules/three/src/lights/ReflectionProbe.js b/node_modules/three/src/lights/ReflectionProbe.js
+new file mode 100644
+index 0000000..6f31da3
+--- /dev/null
++++ b/node_modules/three/src/lights/ReflectionProbe.js
+@@ -0,0 +1,32 @@
++import { Box3 } from '../math/Box3.js';
++import { Light } from './Light.js';
++
++class ReflectionProbe extends Light {
++
++	constructor( box = new Box3(), texture ) {
++
++		super();
++
++		this.box = box;
++		this.texture = texture;
++
++	}
++
++	copy( source ) {
++
++		super.copy( source );
++
++		this.box.copy( source.box );
++		this.texture = source.texture;
++
++		return this;
++
++	}
++
++	// TODO fromJSON/toJSON
++
++}
++
++ReflectionProbe.prototype.isReflectionProbe = true;
++
++export { ReflectionProbe };
+diff --git a/node_modules/three/src/loaders/FileLoader.js b/node_modules/three/src/loaders/FileLoader.js
+index d9a9618..ac5dc08 100644
+--- a/node_modules/three/src/loaders/FileLoader.js
++++ b/node_modules/three/src/loaders/FileLoader.js
+@@ -3,6 +3,17 @@ import { Loader } from './Loader.js';
+ 
+ const loading = {};
+ 
++class HttpError extends Error {
++
++	constructor( message, response ) {
++
++		super( message );
++		this.response = response;
++
++	}
++
++}
++
+ class FileLoader extends Loader {
+ 
+ 	constructor( manager ) {
+@@ -19,7 +30,10 @@ class FileLoader extends Loader {
+ 
+ 		url = this.manager.resolveURL( url );
+ 
+-		const cached = Cache.get( url );
++		const isRangeRequest = this.requestHeader.Range !== undefined;
++		const key = url + ( isRangeRequest ? `:${this.requestHeader.Range}` : '' );
++
++		const cached = Cache.get( key );
+ 
+ 		if ( cached !== undefined ) {
+ 
+@@ -39,9 +53,9 @@ class FileLoader extends Loader {
+ 
+ 		// Check if request is duplicate
+ 
+-		if ( loading[ url ] !== undefined ) {
++		if ( loading[ key ] !== undefined ) {
+ 
+-			loading[ url ].push( {
++			loading[ key ].push( {
+ 
+ 				onLoad: onLoad,
+ 				onProgress: onProgress,
+@@ -54,9 +68,9 @@ class FileLoader extends Loader {
+ 		}
+ 
+ 		// Initialise array for duplicate requests
+-		loading[ url ] = [];
++		loading[ key ] = [];
+ 
+-		loading[ url ].push( {
++		loading[ key ].push( {
+ 			onLoad: onLoad,
+ 			onProgress: onProgress,
+ 			onError: onError,
+@@ -77,7 +91,7 @@ class FileLoader extends Loader {
+ 		fetch( req )
+ 			.then( response => {
+ 
+-				if ( response.status === 200 || response.status === 0 ) {
++				if ( response.status === 200 || response.status === 206 || response.status === 0 ) {
+ 
+ 					// Some browsers return HTTP Status 0 when using non-http protocol
+ 					// e.g. 'file://' or 'data://'. Handle as success.
+@@ -88,6 +102,12 @@ class FileLoader extends Loader {
+ 
+ 					}
+ 
++					if ( isRangeRequest && response.status === 200 ) {
++
++						throw new HttpError( `range request fetch for "${response.url}" responded with ${response.status}: ${response.statusText}`, response );
++
++					}
++
+ 					// Workaround: Checking if response.body === undefined for Alipay browser #23548
+ 
+ 					if ( typeof ReadableStream === 'undefined' || response.body === undefined || response.body.getReader === undefined ) {
+@@ -96,7 +116,7 @@ class FileLoader extends Loader {
+ 
+ 					}
+ 
+-					const callbacks = loading[ url ];
++					const callbacks = loading[ key ];
+ 					const reader = response.body.getReader();
+ 					const contentLength = response.headers.get( 'Content-Length' );
+ 					const total = contentLength ? parseInt( contentLength ) : 0;
+@@ -201,10 +221,10 @@ class FileLoader extends Loader {
+ 
+ 				// Add to cache only on HTTP success, so that we do not cache
+ 				// error response bodies as proper responses to requests.
+-				Cache.add( url, data );
++				Cache.add( key, data );
+ 
+-				const callbacks = loading[ url ];
+-				delete loading[ url ];
++				const callbacks = loading[ key ];
++				delete loading[ key ];
+ 
+ 				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+ 
+@@ -218,7 +238,7 @@ class FileLoader extends Loader {
+ 
+ 				// Abort errors and other errors are handled the same
+ 
+-				const callbacks = loading[ url ];
++				const callbacks = loading[ key ];
+ 
+ 				if ( callbacks === undefined ) {
+ 
+@@ -228,7 +248,7 @@ class FileLoader extends Loader {
+ 
+ 				}
+ 
+-				delete loading[ url ];
++				delete loading[ key ];
+ 
+ 				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+ 
+diff --git a/node_modules/three/src/math/Matrix4.js b/node_modules/three/src/math/Matrix4.js
+index 2c327f3..44eed15 100644
+--- a/node_modules/three/src/math/Matrix4.js
++++ b/node_modules/three/src/math/Matrix4.js
+@@ -831,6 +831,22 @@ class Matrix4 {
+ 
+ 	}
+ 
++	// [HUBS] Similar to equals() but allow the diff under eps.
++	near( matrix, eps = Number.EPSILON ) {
++
++		const te = this.elements;
++		const me = matrix.elements;
++
++		for ( let i = 0; i < 16; i ++ ) {
++
++			if ( Math.abs( te[ i ] - me[ i ] ) >= eps ) return false;
++
++		}
++
++		return true;
++
++	}
++
+ 	fromArray( array, offset = 0 ) {
+ 
+ 		for ( let i = 0; i < 16; i ++ ) {
+diff --git a/node_modules/three/src/math/Quaternion.js b/node_modules/three/src/math/Quaternion.js
+index 6f38435..aaf4bd1 100644
+--- a/node_modules/three/src/math/Quaternion.js
++++ b/node_modules/three/src/math/Quaternion.js
+@@ -639,6 +639,16 @@ class Quaternion {
+ 
+ 	}
+ 
++	// [HUBS] Similar to equals() but allows the diff under eps
++	near( quaternion, eps = Number.EPSILON ) {
++
++		return ( Math.abs( quaternion._x - this._x ) < eps ) &&
++			( Math.abs( quaternion._y - this._y ) < eps ) &&
++			( Math.abs( quaternion._z - this._z ) < eps ) &&
++			( Math.abs( quaternion._w - this._w ) < eps );
++
++	}
++
+ 	fromArray( array, offset = 0 ) {
+ 
+ 		this._x = array[ offset ];
+diff --git a/node_modules/three/src/math/Vector3.js b/node_modules/three/src/math/Vector3.js
+index 8ab4574..b8249e1 100644
+--- a/node_modules/three/src/math/Vector3.js
++++ b/node_modules/three/src/math/Vector3.js
+@@ -676,6 +676,15 @@ class Vector3 {
+ 
+ 	}
+ 
++	// [HUBS] Similar to equals() but allows the diff under eps
++	near( v, eps = Number.EPSILON ) {
++
++		return ( Math.abs( v.x - this.x ) < eps ) &&
++			( Math.abs( v.y - this.y ) < eps ) &&
++			( Math.abs( v.z - this.z ) < eps );
++
++	}
++
+ 	fromArray( array, offset = 0 ) {
+ 
+ 		this.x = array[ offset ];
+diff --git a/node_modules/three/src/renderers/WebGLCubeRenderTarget.js b/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
+index a5a7ddd..800a13a 100644
+--- a/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
++++ b/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
+@@ -83,6 +83,7 @@ class WebGLCubeRenderTarget extends WebGLRenderTarget {
+ 					vec3 direction = normalize( vWorldDirection );
+ 
+ 					vec2 sampleUV = equirectUv( direction );
++					${! texture.flipY ? 'sampleUV.y = 1.0 - sampleUV.y;' : ''}
+ 
+ 					gl_FragColor = texture2D( tEquirect, sampleUV );
+ 
+diff --git a/node_modules/three/src/renderers/WebGLRenderer.js b/node_modules/three/src/renderers/WebGLRenderer.js
+index 4669da7..dd2836d 100644
+--- a/node_modules/three/src/renderers/WebGLRenderer.js
++++ b/node_modules/three/src/renderers/WebGLRenderer.js
+@@ -17,6 +17,7 @@ import { Matrix4 } from '../math/Matrix4.js';
+ import { Vector2 } from '../math/Vector2.js';
+ import { Vector3 } from '../math/Vector3.js';
+ import { Vector4 } from '../math/Vector4.js';
++import { Box3 } from '../math/Box3.js';
+ import { WebGLAnimation } from './webgl/WebGLAnimation.js';
+ import { WebGLAttributes } from './webgl/WebGLAttributes.js';
+ import { WebGLBackground } from './webgl/WebGLBackground.js';
+@@ -54,6 +55,16 @@ function createCanvasElement() {
+ 
+ }
+ 
++// non-zero here allows flat planes to still be lit by reflection probes
++// by considering them *very* thin instead of *infinitely* thin.
++function nonZeroBoxVolume( box ) {
++
++	return ( ( box.max.x - box.min.x || Number.EPSILON ) *
++			 ( box.max.y - box.min.y || Number.EPSILON ) *
++			 ( box.max.z - box.min.z || Number.EPSILON ) );
++
++}
++
+ function WebGLRenderer( parameters = {} ) {
+ 
+ 	this.isWebGLRenderer = true;
+@@ -207,6 +218,9 @@ function WebGLRenderer( parameters = {} ) {
+ 	const _vector2 = new Vector2();
+ 	const _vector3 = new Vector3();
+ 
++	const _tmpObjectAABB = new Box3();
++	const _tmpOverlapBox = new Box3();
++
+ 	const _emptyScene = { background: null, fog: null, environment: null, overrideMaterial: null, isScene: true };
+ 
+ 	function getTargetPixelRatio() {
+@@ -1207,6 +1221,14 @@ function WebGLRenderer( parameters = {} ) {
+ 
+ 		currentRenderState.setupLightsView( camera );
+ 
++		// TODO this triggers cubemap generation up front, should probably be done elsewhere
++		const reflectionProbes = currentRenderState.state.lights.state.reflectionProbes;
++		for ( let i = 0; i < reflectionProbes.length; i ++ ) {
++
++			cubeuvmaps.get( reflectionProbes[ i ].texture );
++
++		}
++
+ 		if ( transmissiveObjects.length > 0 ) renderTransmissionPass( opaqueObjects, scene, camera );
+ 
+ 		if ( viewport ) state.viewport( _currentViewport.copy( viewport ) );
+@@ -1715,6 +1737,90 @@ function WebGLRenderer( parameters = {} ) {
+ 
+ 		}
+ 
++		// This is not done in refreshMaterialUniforms because we want to be able to support the same material using different environment map (based on its location)
++		// Because of this, similar to the above note about skinned meshes, this must be done before refreshMaterialUniforms is called, and both texture uniforms must
++		// be set in all cases to prevent texture units from becoming out of sync when refreshMaterials is not set and thus refreshMaterialUniforms is not called.
++		if ( materialProperties.envMap && material.isMeshStandardMaterial ) {
++
++			const probes = lights.state.reflectionProbes;
++
++			// this is essentially the same as the original codepath without ReflectionProbes, with the addition of setting envMap2 and envMapBlend to noop values
++			if ( material.envMap || ! probes.length || ! object.reflectionProbeMode ) {
++
++				p_uniforms.setValue( _gl, 'envMap', materialProperties.envMap, textures );
++				p_uniforms.setValue( _gl, 'envMap2', materialProperties.envMap, textures );
++				p_uniforms.setValue( _gl, 'envMapBlend', 0 );
++
++			} else if ( object.reflectionProbeMode === 'static' && object.__webglStaticReflectionProbe ) {
++
++				p_uniforms.setValue( _gl, 'envMap', object.__webglStaticReflectionProbe.envMap, textures );
++				p_uniforms.setValue( _gl, 'envMap2', object.__webglStaticReflectionProbe.envMap2, textures );
++				p_uniforms.setValue( _gl, 'envMapBlend', object.__webglStaticReflectionProbe.envMapBlend );
++
++			} else {
++
++				if ( ! geometry.boundingBox ) {
++
++					console.log( 'generated bounding box for ', object.name );
++					geometry.computeBoundingBox();
++
++				}
++
++				_tmpObjectAABB.copy( geometry.boundingBox ).applyMatrix4( object.matrixWorld );
++
++				let envMapA = null;
++				let envMapB = null;
++				let maxVolumeA = 0;
++				let maxVolumeB = 0;
++
++				for ( let i = 0; i < probes.length; i ++ ) {
++
++					if ( probes[ i ].box.intersectsBox( _tmpObjectAABB ) ) {
++
++						const volume = nonZeroBoxVolume( _tmpOverlapBox.copy( _tmpObjectAABB ).intersect( probes[ i ].box ) );
++						if ( volume > maxVolumeA ) {
++
++							envMapB = envMapA;
++							maxVolumeB = maxVolumeA;
++							envMapA = probes[ i ].texture;
++							maxVolumeA = volume;
++
++						} else if ( volume > maxVolumeB ) {
++
++							envMapB = probes[ i ].texture;
++							maxVolumeB = volume;
++
++						}
++
++					}
++
++				}
++
++				const blend = envMapB ?
++					  maxVolumeB / ( maxVolumeA + maxVolumeB ) :
++					  1 - ( maxVolumeA / nonZeroBoxVolume( _tmpObjectAABB ) );
++
++				envMapA = ( material.isMeshStandardMaterial ? cubeuvmaps : cubemaps ).get( envMapA || environment );
++				envMapB = ( material.isMeshStandardMaterial ? cubeuvmaps : cubemaps ).get( envMapB || environment );
++
++				p_uniforms.setValue( _gl, 'envMap', envMapA, textures );
++				p_uniforms.setValue( _gl, 'envMap2', envMapB, textures );
++				p_uniforms.setValue( _gl, 'envMapBlend', blend );
++
++				if ( object.reflectionProbeMode === 'static' ) {
++
++					object.__webglStaticReflectionProbe = {
++						envMap: envMapA,
++						envMap2: envMapB,
++						envMapBlend: blend
++					};
++
++				}
++
++			}
++
++		}
++
+ 		const morphAttributes = geometry.morphAttributes;
+ 
+ 		if ( morphAttributes.position !== undefined || morphAttributes.normal !== undefined || ( morphAttributes.color !== undefined && capabilities.isWebGL2 === true ) ) {
+@@ -1734,6 +1840,7 @@ function WebGLRenderer( parameters = {} ) {
+ 		if ( refreshMaterial ) {
+ 
+ 			p_uniforms.setValue( _gl, 'toneMappingExposure', _this.toneMappingExposure );
++			p_uniforms.setValue( _gl, 'tonemappingLUT', _this.tonemappingLUT, textures );
+ 
+ 			if ( materialProperties.needsLights ) {
+ 
+diff --git a/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_common_pars_fragment.glsl.js b/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_common_pars_fragment.glsl.js
+index cbe76d2..7b67b74 100644
+--- a/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_common_pars_fragment.glsl.js
++++ b/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_common_pars_fragment.glsl.js
+@@ -4,10 +4,13 @@ export default /* glsl */`
+ 	uniform float envMapIntensity;
+ 	uniform float flipEnvMap;
+ 
++	uniform float envMapBlend;
++
+ 	#ifdef ENVMAP_TYPE_CUBE
+ 		uniform samplerCube envMap;
+ 	#else
+ 		uniform sampler2D envMap;
++		uniform sampler2D envMap2;
+ 	#endif
+ 	
+ #endif
+diff --git a/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_physical_pars_fragment.glsl.js b/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_physical_pars_fragment.glsl.js
+index 17461ba..144acb9 100644
+--- a/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_physical_pars_fragment.glsl.js
++++ b/node_modules/three/src/renderers/shaders/ShaderChunk/envmap_physical_pars_fragment.glsl.js
+@@ -8,6 +8,9 @@ export default /* glsl */`
+ 			vec3 worldNormal = inverseTransformDirection( normal, viewMatrix );
+ 
+ 			vec4 envMapColor = textureCubeUV( envMap, worldNormal, 1.0 );
++			vec4 envMap2Color = textureCubeUV( envMap2, worldNormal, 1.0 );
++
++			envMapColor = mix(envMapColor, envMap2Color, envMapBlend);
+ 
+ 			return PI * envMapColor.rgb * envMapIntensity;
+ 
+@@ -31,6 +34,9 @@ export default /* glsl */`
+ 			reflectVec = inverseTransformDirection( reflectVec, viewMatrix );
+ 
+ 			vec4 envMapColor = textureCubeUV( envMap, reflectVec, roughness );
++			vec4 envMap2Color = textureCubeUV( envMap2, reflectVec, roughness );
++
++			envMapColor = mix(envMapColor, envMap2Color, envMapBlend);
+ 
+ 			return envMapColor.rgb * envMapIntensity;
+ 
+diff --git a/node_modules/three/src/renderers/shaders/ShaderChunk/lights_fragment_maps.glsl.js b/node_modules/three/src/renderers/shaders/ShaderChunk/lights_fragment_maps.glsl.js
+index 940f1d3..9419c97 100644
+--- a/node_modules/three/src/renderers/shaders/ShaderChunk/lights_fragment_maps.glsl.js
++++ b/node_modules/three/src/renderers/shaders/ShaderChunk/lights_fragment_maps.glsl.js
+@@ -10,7 +10,7 @@ export default /* glsl */`
+ 
+ 	#endif
+ 
+-	#if defined( USE_ENVMAP ) && defined( STANDARD ) && defined( ENVMAP_TYPE_CUBE_UV )
++	#if defined( USE_ENVMAP ) && defined( STANDARD ) && defined( ENVMAP_TYPE_CUBE_UV ) && !defined(USE_LIGHTMAP)
+ 
+ 		iblIrradiance += getIBLIrradiance( geometry.normal );
+ 
+diff --git a/node_modules/three/src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js b/node_modules/three/src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js
+index 5087a83..ba833db 100644
+--- a/node_modules/three/src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js
++++ b/node_modules/three/src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js
+@@ -73,5 +73,31 @@ vec3 ACESFilmicToneMapping( vec3 color ) {
+ 
+ }
+ 
++// Use a 3D LUT to perform tone mapping
++
++#ifdef LUT_TONE_MAPPING
++
++	precision highp sampler3D;
++	uniform sampler3D tonemappingLUT;
++
++	vec3 LUTToneMapping( vec3 color ) {
++
++		// Match Blender's exposure curve
++		// color *= pow(2.0, toneMappingExposure);
++
++		color *= toneMappingExposure;
++
++		// TODO don't hardcode this
++		float lutSize = 32.0;
++		float pixelWidth = 1.0 / lutSize;
++		float halfPixelWidth = 0.5 / lutSize;
++		vec3 uvw = vec3( halfPixelWidth ) + color.rgb * ( 1.0 - pixelWidth );
++
++		return texture( tonemappingLUT, uvw ).rgb;
++
++	}
++
++#endif
++
+ vec3 CustomToneMapping( vec3 color ) { return color; }
+ `;
+diff --git a/node_modules/three/src/renderers/shaders/ShaderLib.js b/node_modules/three/src/renderers/shaders/ShaderLib.js
+index 126df13..9e19b5f 100644
+--- a/node_modules/three/src/renderers/shaders/ShaderLib.js
++++ b/node_modules/three/src/renderers/shaders/ShaderLib.js
+@@ -75,7 +75,13 @@ const ShaderLib = {
+ 
+ 		uniforms: mergeUniforms( [
+ 			UniformsLib.common,
+-			UniformsLib.envmap,
++			( () => {
++
++				// TODO HACK don't include envMap uniform, it is currently handling directly in WebGLRenderer for ReflectionProbes support
++				const { envMap, ...rest } = UniformsLib.envmap; // eslint-disable-line no-unused-vars
++				return rest;
++
++			} )(),
+ 			UniformsLib.aomap,
+ 			UniformsLib.lightmap,
+ 			UniformsLib.emissivemap,
+diff --git a/node_modules/three/src/renderers/webgl/WebGLLights.js b/node_modules/three/src/renderers/webgl/WebGLLights.js
+index 7e7f0ce..0857430 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLLights.js
++++ b/node_modules/three/src/renderers/webgl/WebGLLights.js
+@@ -174,6 +174,7 @@ function WebGLLights( extensions, capabilities ) {
+ 
+ 		ambient: [ 0, 0, 0 ],
+ 		probe: [],
++		reflectionProbes: [],
+ 		directional: [],
+ 		directionalShadow: [],
+ 		directionalShadowMap: [],
+@@ -215,6 +216,8 @@ function WebGLLights( extensions, capabilities ) {
+ 		let numPointShadows = 0;
+ 		let numSpotShadows = 0;
+ 
++		let numReflectionProbes = 0;
++
+ 		lights.sort( shadowCastingLightsFirst );
+ 
+ 		// artist-friendly light intensity scaling factor
+@@ -244,6 +247,10 @@ function WebGLLights( extensions, capabilities ) {
+ 
+ 				}
+ 
++			} else if ( light.isReflectionProbe ) {
++
++				state.reflectionProbes[ numReflectionProbes ++ ] = light;
++
+ 			} else if ( light.isDirectionalLight ) {
+ 
+ 				const uniforms = cache.get( light );
+@@ -411,6 +418,8 @@ function WebGLLights( extensions, capabilities ) {
+ 		state.ambient[ 1 ] = g;
+ 		state.ambient[ 2 ] = b;
+ 
++		state.reflectionProbes.length = numReflectionProbes;
++
+ 		const hash = state.hash;
+ 
+ 		if ( hash.directionalLength !== directionalLength ||
+diff --git a/node_modules/three/src/renderers/webgl/WebGLMaterials.js b/node_modules/three/src/renderers/webgl/WebGLMaterials.js
+index 188aa81..24d0d4f 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLMaterials.js
++++ b/node_modules/three/src/renderers/webgl/WebGLMaterials.js
+@@ -173,7 +173,12 @@ function WebGLMaterials( renderer, properties ) {
+ 
+ 		if ( envMap ) {
+ 
+-			uniforms.envMap.value = envMap;
++			// TODO HACK currently handling directly in WebGLRenderer only for MeshStandardMaterial for ReflectionProbes
++			if ( ! material.isMeshStandardMaterial ) {
++
++				uniforms.envMap.value = envMap;
++
++			}
+ 
+ 			uniforms.flipEnvMap.value = ( envMap.isCubeTexture && envMap.isRenderTargetTexture === false ) ? - 1 : 1;
+ 
+diff --git a/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js b/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
+index b8d5fe6..f43bb48 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
++++ b/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
+@@ -48,7 +48,7 @@ function WebGLMorphtargets( gl, capabilities, textures ) {
+ 
+ 		const objectInfluences = object.morphTargetInfluences;
+ 
+-		if ( capabilities.isWebGL2 === true ) {
++		if ( capabilities.isWebGL2 === true && false /* casuing issues, disable for now, also see WebGLProgram */ ) {
+ 
+ 			// instead of using attributes, the WebGL 2 code path encodes morph targets
+ 			// into an array of data textures. Each layer represents a single morph target.
+diff --git a/node_modules/three/src/renderers/webgl/WebGLProgram.js b/node_modules/three/src/renderers/webgl/WebGLProgram.js
+index 5e9ee69..80b13ed 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLProgram.js
++++ b/node_modules/three/src/renderers/webgl/WebGLProgram.js
+@@ -1,7 +1,7 @@
+ import { WebGLUniforms } from './WebGLUniforms.js';
+ import { WebGLShader } from './WebGLShader.js';
+ import { ShaderChunk } from '../shaders/ShaderChunk.js';
+-import { NoToneMapping, AddOperation, MixOperation, MultiplyOperation, CubeRefractionMapping, CubeUVReflectionMapping, CubeReflectionMapping, PCFSoftShadowMap, PCFShadowMap, VSMShadowMap, ACESFilmicToneMapping, CineonToneMapping, CustomToneMapping, ReinhardToneMapping, LinearToneMapping, sRGBEncoding, LinearEncoding, GLSL3 } from '../../constants.js';
++import { NoToneMapping, AddOperation, MixOperation, MultiplyOperation, CubeRefractionMapping, CubeUVReflectionMapping, CubeReflectionMapping, PCFSoftShadowMap, PCFShadowMap, VSMShadowMap, ACESFilmicToneMapping, CineonToneMapping, CustomToneMapping, ReinhardToneMapping, LinearToneMapping, sRGBEncoding, LinearEncoding, GLSL3, LUTToneMapping } from '../../constants.js';
+ 
+ let programIdCount = 0;
+ 
+@@ -97,6 +97,10 @@ function getToneMappingFunction( functionName, toneMapping ) {
+ 			toneMappingName = 'Custom';
+ 			break;
+ 
++		case LUTToneMapping:
++			toneMappingName = 'LUT';
++			break;
++
+ 		default:
+ 			console.warn( 'THREE.WebGLProgram: Unsupported toneMapping:', toneMapping );
+ 			toneMappingName = 'Linear';
+@@ -511,10 +515,13 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
+ 
+ 			parameters.morphTargets ? '#define USE_MORPHTARGETS' : '',
+ 			parameters.morphNormals && parameters.flatShading === false ? '#define USE_MORPHNORMALS' : '',
+-			( parameters.morphColors && parameters.isWebGL2 ) ? '#define USE_MORPHCOLORS' : '',
+-			( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_TEXTURE' : '',
+-			( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_TEXTURE_STRIDE ' + parameters.morphTextureStride : '',
+-			( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_COUNT ' + parameters.morphTargetsCount : '',
++
++			// This causes issues on some systems, disable for now
++			// ( parameters.morphColors && parameters.isWebGL2 ) ? '#define USE_MORPHCOLORS' : '',
++			// ( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_TEXTURE' : '',
++			// ( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_TEXTURE_STRIDE ' + parameters.morphTextureStride : '',
++			// ( parameters.morphTargetsCount > 0 && parameters.isWebGL2 ) ? '#define MORPHTARGETS_COUNT ' + parameters.morphTargetsCount : '',
++
+ 			parameters.doubleSided ? '#define DOUBLE_SIDED' : '',
+ 			parameters.flipSided ? '#define FLIP_SIDED' : '',
+ 
+@@ -688,6 +695,7 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
+ 			'uniform bool isOrthographic;',
+ 
+ 			( parameters.toneMapping !== NoToneMapping ) ? '#define TONE_MAPPING' : '',
++			( parameters.toneMapping === LUTToneMapping ) ? '#define LUT_TONE_MAPPING' : '',
+ 			( parameters.toneMapping !== NoToneMapping ) ? ShaderChunk[ 'tonemapping_pars_fragment' ] : '', // this code is required here because it is used by the toneMapping() function defined below
+ 			( parameters.toneMapping !== NoToneMapping ) ? getToneMappingFunction( 'toneMapping', parameters.toneMapping ) : '',
+ 
+diff --git a/node_modules/three/src/renderers/webgl/WebGLState.js b/node_modules/three/src/renderers/webgl/WebGLState.js
+index dff3fb2..85fd4c6 100644
+--- a/node_modules/three/src/renderers/webgl/WebGLState.js
++++ b/node_modules/three/src/renderers/webgl/WebGLState.js
+@@ -928,11 +928,27 @@ function WebGLState( gl, extensions, capabilities ) {
+ 
+ 	}
+ 
+-	function compressedTexImage2D() {
++	function compressedTexImage2D( a, b, c, d, e, f, g, h, i, j ) {
+ 
+ 		try {
+ 
+-			gl.compressedTexImage2D.apply( gl, arguments );
++			if ( h === undefined ) {
++
++				gl.compressedTexImage2D( a, b, c, d, e, f, g );
++
++			} else if ( i === undefined ) {
++
++				gl.compressedTexImage2D( a, b, c, d, e, f, g, h );
++
++			} else if ( j === undefined ) {
++
++				gl.compressedTexImage2D( a, b, c, d, e, f, g, h, i );
++
++			} else {
++
++				gl.compressedTexImage2D( a, b, c, d, e, f, g, h, i, j );
++
++			}
+ 
+ 		} catch ( error ) {
+ 
+@@ -1012,11 +1028,19 @@ function WebGLState( gl, extensions, capabilities ) {
+ 
+ 	}
+ 
+-	function texImage2D() {
++	function texImage2D( a, b, c, d, e, f, g, h, i ) {
+ 
+ 		try {
+ 
+-			gl.texImage2D.apply( gl, arguments );
++			if ( g === undefined ) {
++
++				gl.texImage2D( a, b, c, d, e, f );
++
++			} else {
++
++				gl.texImage2D( a, b, c, d, e, f, g, h, i );
++
++			}
+ 
+ 		} catch ( error ) {
+ 
+@@ -1026,11 +1050,19 @@ function WebGLState( gl, extensions, capabilities ) {
+ 
+ 	}
+ 
+-	function texImage3D() {
++	function texImage3D( a, b, c, d, e, f, g, h, i, j, k ) {
+ 
+ 		try {
+ 
+-			gl.texImage3D.apply( gl, arguments );
++			if ( k === undefined ) {
++
++				gl.texImage3D( a, b, c, d, e, f, g, h, i, j );
++
++			} else {
++
++				gl.texImage3D( a, b, c, d, e, f, g, h, i, j, k );
++
++			}
+ 
+ 		} catch ( error ) {
+ 
+diff --git a/node_modules/three/src/renderers/webxr/WebXRManager.js b/node_modules/three/src/renderers/webxr/WebXRManager.js
+index 308be47..3539221 100644
+--- a/node_modules/three/src/renderers/webxr/WebXRManager.js
++++ b/node_modules/three/src/renderers/webxr/WebXRManager.js
+@@ -506,6 +506,8 @@ class WebXRManager extends EventDispatcher {
+ 			camera.quaternion.copy( cameraVR.quaternion );
+ 			camera.scale.copy( cameraVR.scale );
+ 			camera.matrix.copy( cameraVR.matrix );
++			camera.matrix.decompose( camera.position, camera.quaternion, camera.scale );
++
+ 			camera.matrixWorld.copy( cameraVR.matrixWorld );
+ 
+ 			const children = camera.children;

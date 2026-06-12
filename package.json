@@ -40,7 +40,8 @@
     "build-storybook": "storybook build",
     "deploy-storybook": "storybook-to-ghpages",
     "intl-extract": "node ./src/assets/locales/intl-extract.js",
-    "intl-extract-en-locale": "node ./src/assets/locales/intl-extract.js en"
+    "intl-extract-en-locale": "node ./src/assets/locales/intl-extract.js en",
+    "postinstall": "patch-package"
   },
   "scripts-info": {
     "start": "Run the client against your Hubs Cloud instance, or the developer infrastructure (TBD, not operational anymore),\n  using application configs pulled from the server",
@@ -136,7 +137,7 @@
     "sdp-transform": "^2.14.1",
     "semver": "^7.3.2",
     "stream-browserify": "^3.0.0",
-    "three": "github:hubs-foundation/three.js#65b5105908f5f135cad25fed07e25f15f3876777",
+    "three": "^0.141.0",
     "three-ammo": "github:hubs-foundation/three-ammo",
     "three-gltf-extensions": "^0.0.14",
     "three-mesh-bvh": "^0.3.7",
@@ -205,7 +206,9 @@
     "node-fetch": "^2.6.7",
     "npm-scripts-info": "0.3.9",
     "ora": "^6.1.2",
+    "patch-package": "^8.0.1",
     "phoenix-channels": "^1.0.0",
+    "postinstall-postinstall": "^2.1.0",
     "prettier": "^3.6.1",
     "process": "^0.11.10",
     "protoo-client": "^4.0.6",

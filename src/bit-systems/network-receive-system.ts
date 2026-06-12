@@ -5,7 +5,7 @@ import { renderAsNetworkedEntity } from "../utils/create-networked-entity";
 import { createEntityState, deleteEntityState, hasSavedEntityState } from "../utils/entity-state-utils";
 import { networkableComponents, schemas, StoredComponent } from "../utils/network-schemas";
 import type { ClientID, CursorBufferUpdateMessage, EntityID, StringID, UpdateMessage } from "../utils/networking-types";
-import { hasPermissionToSpawn } from "../utils/permissions";
+import { canManipulateNetworkedEntity, hasPermissionToSpawn } from "../utils/permissions";
 import { takeSoftOwnership } from "../utils/take-soft-ownership";
 import {
   connectedClientIds,
@@ -211,6 +211,10 @@ export function networkReceiveSystem(world: HubsWorld) {
         // Can we use connectedClientIds / disconnectedClientIds / and the nid prefix to figure this out?
         // TODO It would be nice if we could squash these updates
         const updates = storedUpdates.get(nid) || [];
+        // [Security] Preserve the attributed sender so the authorization guard below still
+        // runs when this update is replayed after the entity is instantiated. Without this, a
+        // peer could bypass the check by racing its (takeover) update ahead of the create.
+        updateMessage.fromClientId = message.fromClientId;
         updates.push(updateMessage);
         storedUpdates.set(nid, updates);
         continue;
@@ -219,6 +223,21 @@ export function networkReceiveSystem(world: HubsWorld) {
       const eid = world.nid2eid.get(nid)!;
 
       if (isOutdatedMessage(eid, updateMessage)) {
+        continue;
+      }
+
+      // [Security] Reject updates from senders who lack permission to manipulate this entity.
+      // Each client enforces this independently against the server-attributed sender id, so a
+      // maliciously modified peer cannot take ownership of (or mutate) objects in other
+      // participants' views. Authoritative enforcement still belongs in Reticulum; this is
+      // defense-in-depth and mirrors the permission check on the create path above.
+      // `message.fromClientId` is present for live messages; replayed stored updates carry the
+      // attribution on the update itself (see the store branch above).
+      const sender = message.fromClientId ?? updateMessage.fromClientId;
+      if (sender && !canManipulateNetworkedEntity(sender, eid)) {
+        console.warn(
+          `Ignoring unauthorized update for ${updateMessage.nid} from client ${sender} (insufficient permissions).`
+        );
         continue;
       }
 
