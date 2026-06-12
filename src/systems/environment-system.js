@@ -5,6 +5,17 @@ import { LUTCubeLoader } from "three/examples/jsm/loaders/LUTCubeLoader";
 import blenderLutPath from "../assets/blender-lut.cube";
 import { NoToneMapping } from "three";
 
+// UPGRADE: this file is the central seam for the three.js renderer-feature rework. See
+// doc/renderer-rebase-plan.md for the full inventory. Three things gate moving past r150:
+//   1. [r152 color management] `outputEncoding`/`sRGBEncoding`/`LinearEncoding` and per-texture
+//      `.encoding` are removed in r152 (replaced by `outputColorSpace`/`colorSpace` +
+//      `SRGBColorSpace`/`NoColorSpace`, with `ColorManagement.enabled` on by default). All such
+//      call sites (run `grep -rE "sRGBEncoding|LinearEncoding|outputEncoding|\.encoding" src`)
+//      must migrate together, and scene appearance re-validated.
+//   2. [Option C] `LUTToneMapping` is a Hubs-only three patch. Replace with an upstream-supported
+//      path (post-processing LUT pass, or upstream tone-mapping) when jumping past the patch.
+//   3. [Option C] Reflection probes are a Hubs-only three patch (box-projected env maps). Replace
+//      with an upstream equivalent (light probes / baked env maps) at the next version jump.
 const toneMappingOptions = {
   None: "NoToneMapping",
   Linear: "LinearToneMapping",

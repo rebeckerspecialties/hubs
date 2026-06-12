@@ -143,9 +143,9 @@ AFRAME.registerComponent("emoji-hud", {
       cameraForward.transformDirection(cameraObject3D.matrixWorld);
       projectedCameraForward.set(0, 0, -1);
       projectedCameraForward.transformDirection(cameraObject3D.matrixWorld);
-      projectedCameraForward.projectOnPlane(THREE.Object3D.DefaultUp).normalize();
+      projectedCameraForward.projectOnPlane(THREE.Object3D.DEFAULT_UP).normalize();
       const angle =
-        Math.sign(THREE.Object3D.DefaultUp.dot(cameraForward)) * projectedCameraForward.angleTo(cameraForward);
+        Math.sign(THREE.Object3D.DEFAULT_UP.dot(cameraForward)) * projectedCameraForward.angleTo(cameraForward);
       const angleOffset = angle - Math.max(this.data.minHudAngle, Math.min(this.data.maxHudAngle, angle));
       angledCameraForward.set(0, 0, -1);
       angledCameraForward.applyAxisAngle(defaultRight, this.data.hudAngle - angleOffset);

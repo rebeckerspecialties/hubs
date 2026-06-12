@@ -1,8 +1,8 @@
 diff --git a/node_modules/three/src/Three.js b/node_modules/three/src/Three.js
-index 605a974..5fdce4f 100644
+index 8254f9a..992c4e9 100644
 --- a/node_modules/three/src/Three.js
 +++ b/node_modules/three/src/Three.js
-@@ -65,6 +65,7 @@ export { AmbientLight } from './lights/AmbientLight.js';
+@@ -66,6 +66,7 @@ export { AmbientLight } from './lights/AmbientLight.js';
  export { AmbientLightProbe } from './lights/AmbientLightProbe.js';
  export { Light } from './lights/Light.js';
  export { LightProbe } from './lights/LightProbe.js';
@@ -11,7 +11,7 @@ index 605a974..5fdce4f 100644
  export { PerspectiveCamera } from './cameras/PerspectiveCamera.js';
  export { OrthographicCamera } from './cameras/OrthographicCamera.js';
 diff --git a/node_modules/three/src/animation/PropertyBinding.js b/node_modules/three/src/animation/PropertyBinding.js
-index 8e3b3d6..9e3abc7 100644
+index 9d23101..e9bb45c 100644
 --- a/node_modules/three/src/animation/PropertyBinding.js
 +++ b/node_modules/three/src/animation/PropertyBinding.js
 @@ -350,6 +350,7 @@ class PropertyBinding {
@@ -97,10 +97,10 @@ index 9c2a7a2..6771006 100644
  
  }
 diff --git a/node_modules/three/src/constants.js b/node_modules/three/src/constants.js
-index e2d666a..d1d6cd4 100644
+index a94efd7..72fe724 100644
 --- a/node_modules/three/src/constants.js
 +++ b/node_modules/three/src/constants.js
-@@ -53,6 +53,7 @@ export const ReinhardToneMapping = 2;
+@@ -52,6 +52,7 @@ export const ReinhardToneMapping = 2;
  export const CineonToneMapping = 3;
  export const ACESFilmicToneMapping = 4;
  export const CustomToneMapping = 5;
@@ -109,7 +109,7 @@ index e2d666a..d1d6cd4 100644
  export const UVMapping = 300;
  export const CubeReflectionMapping = 301;
 diff --git a/node_modules/three/src/core/Object3D.js b/node_modules/three/src/core/Object3D.js
-index ea06b54..61663d9 100644
+index 37c0cc2..050a8c2 100644
 --- a/node_modules/three/src/core/Object3D.js
 +++ b/node_modules/three/src/core/Object3D.js
 @@ -11,7 +11,9 @@ let _object3DId = 0;
@@ -137,8 +137,8 @@ index ea06b54..61663d9 100644
  class Object3D extends EventDispatcher {
  
  	constructor() {
-@@ -100,11 +110,18 @@ class Object3D extends EventDispatcher {
- 		this.matrixAutoUpdate = Object3D.DefaultMatrixAutoUpdate;
+@@ -100,6 +110,11 @@ class Object3D extends EventDispatcher {
+ 		this.matrixAutoUpdate = Object3D.DEFAULT_MATRIX_AUTO_UPDATE;
  		this.matrixWorldNeedsUpdate = false;
  
 +		// [HUBS] Special flags to avoid unnecessary matrices update
@@ -146,9 +146,10 @@ index ea06b54..61663d9 100644
 +		this.childrenNeedMatrixWorldUpdate = false;
 +		this.matrixIsModified = false;
 +		this.hasHadFirstMatrixUpdate = false;
-+
+ 		this.matrixWorldAutoUpdate = Object3D.DEFAULT_MATRIX_WORLD_AUTO_UPDATE; // checked by the renderer
+ 
  		this.layers = new Layers();
- 		this.visible = true;
+@@ -107,6 +122,7 @@ class Object3D extends EventDispatcher {
  
  		this.castShadow = false;
  		this.receiveShadow = false;
@@ -156,7 +157,7 @@ index ea06b54..61663d9 100644
  
  		this.frustumCulled = true;
  		this.renderOrder = 0;
-@@ -127,6 +144,8 @@ class Object3D extends EventDispatcher {
+@@ -129,6 +145,8 @@ class Object3D extends EventDispatcher {
  
  		this.matrix.decompose( this.position, this.quaternion, this.scale );
  
@@ -165,7 +166,7 @@ index ea06b54..61663d9 100644
  	}
  
  	applyQuaternion( q ) {
-@@ -285,6 +304,8 @@ class Object3D extends EventDispatcher {
+@@ -291,6 +309,8 @@ class Object3D extends EventDispatcher {
  
  		}
  
@@ -174,7 +175,7 @@ index ea06b54..61663d9 100644
  		this.quaternion.setFromRotationMatrix( _m1 );
  
  		if ( parent ) {
-@@ -295,6 +316,16 @@ class Object3D extends EventDispatcher {
+@@ -301,6 +321,16 @@ class Object3D extends EventDispatcher {
  
  		}
  
@@ -191,7 +192,7 @@ index ea06b54..61663d9 100644
  	}
  
  	add( object ) {
-@@ -328,6 +359,7 @@ class Object3D extends EventDispatcher {
+@@ -334,6 +364,7 @@ class Object3D extends EventDispatcher {
  
  			object.parent = this;
  			this.children.push( object );
@@ -199,7 +200,7 @@ index ea06b54..61663d9 100644
  
  			object.dispatchEvent( _addedEvent );
  
-@@ -362,6 +394,13 @@ class Object3D extends EventDispatcher {
+@@ -368,6 +399,13 @@ class Object3D extends EventDispatcher {
  			object.parent = null;
  			this.children.splice( index, 1 );
  
@@ -213,21 +214,15 @@ index ea06b54..61663d9 100644
  			object.dispatchEvent( _removedEvent );
  
  		}
-@@ -554,76 +593,161 @@ class Object3D extends EventDispatcher {
+@@ -582,88 +620,161 @@ class Object3D extends EventDispatcher {
  
  		this.matrixWorldNeedsUpdate = true;
  
--	}
--
--	updateMatrixWorld( force ) {
--
--		if ( this.matrixAutoUpdate ) this.updateMatrix();
 +		this._handleMatrixModification( this );
++
+ 	}
  
--		if ( this.matrixWorldNeedsUpdate || force ) {
-+	}
- 
--			if ( this.parent === null ) {
+-	updateMatrixWorld( force ) {
 +	// [HUBS] Computes this object's matrices and then the recursively computes the matrices of all the children.
 +	//
 +	// forceWorldUpdate - If true and the object is visible, will force the world matrix to be updated for
@@ -236,70 +231,73 @@ index ea06b54..61663d9 100644
 +	// includeInvisible - If true, does not ignore non-visible objects.
 +	updateMatrixWorld( forceWorldUpdate, includeInvisible ) {
  
--				this.matrixWorld.copy( this.matrix );
+-		if ( this.matrixAutoUpdate ) this.updateMatrix();
 +		if ( ! this.visible && ! includeInvisible ) {
  
--			} else {
+-		if ( this.matrixWorldNeedsUpdate || force ) {
 +			if ( forceWorldUpdate ) {
  
--				this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
+-			if ( this.parent === null ) {
 +				this.matrixWorldNeedsUpdate = true;
  
- 			}
+-				this.matrixWorld.copy( this.matrix );
++			}
  
--			this.matrixWorldNeedsUpdate = false;
--
--			force = true;
+-			} else {
 +			return;
  
- 		}
+-				this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
++		}
  
--		// update children
+-			}
 +		// Do not recurse upwards, since this is recursing downwards
 +		this.updateMatrices( false, forceWorldUpdate, true );
  
- 		const children = this.children;
+-			this.matrixWorldNeedsUpdate = false;
++		const children = this.children;
 +		const forceChildrenWorldUpdate = this.childrenNeedMatrixWorldUpdate || forceWorldUpdate;
++
++		for ( let i = 0, l = children.length; i < l; i ++ ) {
  
- 		for ( let i = 0, l = children.length; i < l; i ++ ) {
- 
--			children[ i ].updateMatrixWorld( force );
+-			force = true;
 +			children[ i ].updateMatrixWorld( forceChildrenWorldUpdate, includeInvisible );
  
  		}
  
+-		// update children
 +		this.childrenNeedMatrixWorldUpdate = false;
-+
- 	}
  
-+
+-		const children = this.children;
++	}
+ 
+-		for ( let i = 0, l = children.length; i < l; i ++ ) {
+ 
+-			const child = children[ i ];
 +	// [HUBS] Updates this function to use updateMatrices(). In general our code should prefer calling updateMatrices() directly,
 +	// patching this for compatibility upstream, namely with Box3.expandToObject and Object3D.attach
- 	updateWorldMatrix( updateParents, updateChildren ) {
- 
--		const parent = this.parent;
++	updateWorldMatrix( updateParents, updateChildren ) {
++
 +		this.updateMatrices( false, false, ! updateParents );
  
--		if ( updateParents === true && parent !== null ) {
+-			if ( child.matrixWorldAutoUpdate === true || force === true ) {
 +		if ( updateChildren ) {
- 
--			parent.updateWorldMatrix( true, false );
++
 +			const children = this.children;
 +
 +			for ( let i = 0, l = children.length; i < l; i ++ ) {
-+
-+				children[ i ].updateMatrixWorld( false, false );
-+
-+			}
-+
-+			this.childrenNeedMatrixWorldUpdate = false;
  
+-				child.updateMatrixWorld( force );
++				children[ i ].updateMatrixWorld( false, false );
+ 
+ 			}
+ 
++			this.childrenNeedMatrixWorldUpdate = false;
++
  		}
  
--		if ( this.matrixAutoUpdate ) this.updateMatrix();
-+	}
+ 	}
  
--		if ( this.parent === null ) {
+-	updateWorldMatrix( updateParents, updateChildren ) {
 +	// [HUBS] By the end of this function this.matrix reflects the updated local matrix
 +	// and this.matrixWorld reflects the updated world matrix, taking into account
 +	// parent matrices.
@@ -329,44 +327,51 @@ index ea06b54..61663d9 100644
 +				// identity matrix is updated.
 +				this.updateMatrix();
  
--			this.matrixWorld.copy( this.matrix );
+-		const parent = this.parent;
 +			}
  
--		} else {
+-		if ( updateParents === true && parent !== null && parent.matrixWorldAutoUpdate === true ) {
 +			this.hasHadFirstMatrixUpdate = true;
 +			this.matrixWorldNeedsUpdate = true;
 +			this.cachedMatrixWorld = this.matrixWorld;
-+
+ 
+-			parent.updateWorldMatrix( true, false );
 +		} else if ( this.matrixNeedsUpdate || this.matrixAutoUpdate || forceLocalUpdate ) {
  
--			this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
+-		}
 +			// updateMatrix() sets matrixWorldNeedsUpdate = true
 +			this.updateMatrix();
 +			this.matrixNeedsUpdate = false;
  
- 		}
+-		if ( this.matrixAutoUpdate ) this.updateMatrix();
++		}
  
--		// update children
+-		if ( this.parent === null ) {
 +		if ( ! skipParents && this.parent ) {
  
--		if ( updateChildren === true ) {
+-			this.matrixWorld.copy( this.matrix );
 +			this.parent.updateMatrices( false, forceWorldUpdate, false );
 +			this.matrixWorldNeedsUpdate = this.matrixWorldNeedsUpdate || this.parent.childrenNeedMatrixWorldUpdate;
  
--			const children = this.children;
+-		} else {
 +		}
  
--			for ( let i = 0, l = children.length; i < l; i ++ ) {
+-			this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
 +		if ( this.matrixWorldNeedsUpdate || forceWorldUpdate ) {
-+
+ 
+-		}
 +			_m2.copy( this.matrixWorld );
-+
+ 
+-		// update children
 +			if ( this.parent === null ) {
-+
+ 
+-		if ( updateChildren === true ) {
 +				this.matrixWorld.copy( this.matrix );
-+
+ 
+-			const children = this.children;
 +			} else {
-+
+ 
+-			for ( let i = 0, l = children.length; i < l; i ++ ) {
 +				// If the matrix is unmodified, it is the identity matrix,
 +				// and hence we can use the parent's world matrix directly.
 +				//
@@ -374,20 +379,22 @@ index ea06b54..61663d9 100644
 +				// *or* will update the parent themselves beforehand as is done in
 +				// updateMatrixWorld.
 +				if ( ! this.matrixIsModified ) {
-+
+ 
+-				const child = children[ i ];
 +					this.matrixWorld = this.parent.matrixWorld;
-+
+ 
+-				if ( child.matrixWorldAutoUpdate === true ) {
 +				} else {
-+
+ 
+-					child.updateWorldMatrix( false, true );
 +					// Once matrixIsModified === true, this.matrixWorld has been updated to be a local
 +					// copy, not a reference to this.parent.matrixWorld (see updateMatrix/applyMatrix)
 +					this.matrixWorld.multiplyMatrices( this.parent.matrixWorld, this.matrix );
-+
-+				}
  
--				children[ i ].updateWorldMatrix( false, true );
-+			}
-+
+ 				}
+ 
+ 			}
+ 
 +			if ( _m2.near( this.matrixWorld, _epsilon ) ) {
 +
 +				this.matrixWorld.copy( _m2 );
@@ -395,15 +402,15 @@ index ea06b54..61663d9 100644
 +			} else {
 +
 +				this.childrenNeedMatrixWorldUpdate = true;
- 
- 			}
- 
++
++			}
++
 +			this.matrixWorldNeedsUpdate = false;
 +
  		}
  
  	}
-@@ -919,6 +1043,23 @@ class Object3D extends EventDispatcher {
+@@ -961,6 +1072,23 @@ class Object3D extends EventDispatcher {
  
  	}
  
@@ -426,7 +433,7 @@ index ea06b54..61663d9 100644
 +
  }
  
- Object3D.DefaultUp = new Vector3( 0, 1, 0 );
+ Object3D.DEFAULT_UP = /*@__PURE__*/ new Vector3( 0, 1, 0 );
 diff --git a/node_modules/three/src/core/Raycaster.js b/node_modules/three/src/core/Raycaster.js
 index c4f0c37..86a8f29 100644
 --- a/node_modules/three/src/core/Raycaster.js
@@ -444,19 +451,6 @@ index c4f0c37..86a8f29 100644
 +	object.raycast( raycaster, intersects );
  
  	if ( recursive === true ) {
- 
-diff --git a/node_modules/three/src/extras/PMREMGenerator.js b/node_modules/three/src/extras/PMREMGenerator.js
-index 9e752b9..d87d192 100644
---- a/node_modules/three/src/extras/PMREMGenerator.js
-+++ b/node_modules/three/src/extras/PMREMGenerator.js
-@@ -261,7 +261,7 @@ class PMREMGenerator {
- 
- 		const cubeUVRenderTarget = _createRenderTarget( width, height, params );
- 
--		if ( this._pingPongRenderTarget === null || this._pingPongRenderTarget.width !== width ) {
-+		if ( this._pingPongRenderTarget === null || this._pingPongRenderTarget.width !== width || this._pingPongRenderTarget.height !== height ) {
- 
- 			if ( this._pingPongRenderTarget !== null ) {
  
 diff --git a/node_modules/three/src/lights/ReflectionProbe.js b/node_modules/three/src/lights/ReflectionProbe.js
 new file mode 100644
@@ -497,28 +491,10 @@ index 0000000..6f31da3
 +
 +export { ReflectionProbe };
 diff --git a/node_modules/three/src/loaders/FileLoader.js b/node_modules/three/src/loaders/FileLoader.js
-index d9a9618..ac5dc08 100644
+index 1e528eb..5b4060d 100644
 --- a/node_modules/three/src/loaders/FileLoader.js
 +++ b/node_modules/three/src/loaders/FileLoader.js
-@@ -3,6 +3,17 @@ import { Loader } from './Loader.js';
- 
- const loading = {};
- 
-+class HttpError extends Error {
-+
-+	constructor( message, response ) {
-+
-+		super( message );
-+		this.response = response;
-+
-+	}
-+
-+}
-+
- class FileLoader extends Loader {
- 
- 	constructor( manager ) {
-@@ -19,7 +30,10 @@ class FileLoader extends Loader {
+@@ -30,7 +30,10 @@ class FileLoader extends Loader {
  
  		url = this.manager.resolveURL( url );
  
@@ -530,7 +506,7 @@ index d9a9618..ac5dc08 100644
  
  		if ( cached !== undefined ) {
  
-@@ -39,9 +53,9 @@ class FileLoader extends Loader {
+@@ -50,9 +53,9 @@ class FileLoader extends Loader {
  
  		// Check if request is duplicate
  
@@ -542,7 +518,7 @@ index d9a9618..ac5dc08 100644
  
  				onLoad: onLoad,
  				onProgress: onProgress,
-@@ -54,9 +68,9 @@ class FileLoader extends Loader {
+@@ -65,9 +68,9 @@ class FileLoader extends Loader {
  		}
  
  		// Initialise array for duplicate requests
@@ -554,7 +530,7 @@ index d9a9618..ac5dc08 100644
  			onLoad: onLoad,
  			onProgress: onProgress,
  			onError: onError,
-@@ -77,7 +91,7 @@ class FileLoader extends Loader {
+@@ -88,7 +91,7 @@ class FileLoader extends Loader {
  		fetch( req )
  			.then( response => {
  
@@ -563,7 +539,7 @@ index d9a9618..ac5dc08 100644
  
  					// Some browsers return HTTP Status 0 when using non-http protocol
  					// e.g. 'file://' or 'data://'. Handle as success.
-@@ -88,6 +102,12 @@ class FileLoader extends Loader {
+@@ -99,6 +102,12 @@ class FileLoader extends Loader {
  
  					}
  
@@ -576,16 +552,16 @@ index d9a9618..ac5dc08 100644
  					// Workaround: Checking if response.body === undefined for Alipay browser #23548
  
  					if ( typeof ReadableStream === 'undefined' || response.body === undefined || response.body.getReader === undefined ) {
-@@ -96,7 +116,7 @@ class FileLoader extends Loader {
+@@ -107,7 +116,7 @@ class FileLoader extends Loader {
  
  					}
  
 -					const callbacks = loading[ url ];
 +					const callbacks = loading[ key ];
  					const reader = response.body.getReader();
- 					const contentLength = response.headers.get( 'Content-Length' );
- 					const total = contentLength ? parseInt( contentLength ) : 0;
-@@ -201,10 +221,10 @@ class FileLoader extends Loader {
+ 
+ 					// Nginx needs X-File-Size check
+@@ -215,10 +224,10 @@ class FileLoader extends Loader {
  
  				// Add to cache only on HTTP success, so that we do not cache
  				// error response bodies as proper responses to requests.
@@ -599,7 +575,7 @@ index d9a9618..ac5dc08 100644
  
  				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
  
-@@ -218,7 +238,7 @@ class FileLoader extends Loader {
+@@ -232,7 +241,7 @@ class FileLoader extends Loader {
  
  				// Abort errors and other errors are handled the same
  
@@ -608,7 +584,7 @@ index d9a9618..ac5dc08 100644
  
  				if ( callbacks === undefined ) {
  
-@@ -228,7 +248,7 @@ class FileLoader extends Loader {
+@@ -242,7 +251,7 @@ class FileLoader extends Loader {
  
  				}
  
@@ -618,10 +594,10 @@ index d9a9618..ac5dc08 100644
  				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
  
 diff --git a/node_modules/three/src/math/Matrix4.js b/node_modules/three/src/math/Matrix4.js
-index 2c327f3..44eed15 100644
+index 9b12867..7799f03 100644
 --- a/node_modules/three/src/math/Matrix4.js
 +++ b/node_modules/three/src/math/Matrix4.js
-@@ -831,6 +831,22 @@ class Matrix4 {
+@@ -807,6 +807,22 @@ class Matrix4 {
  
  	}
  
@@ -645,10 +621,10 @@ index 2c327f3..44eed15 100644
  
  		for ( let i = 0; i < 16; i ++ ) {
 diff --git a/node_modules/three/src/math/Quaternion.js b/node_modules/three/src/math/Quaternion.js
-index 6f38435..aaf4bd1 100644
+index 3d67435..7f9e4b8 100644
 --- a/node_modules/three/src/math/Quaternion.js
 +++ b/node_modules/three/src/math/Quaternion.js
-@@ -639,6 +639,16 @@ class Quaternion {
+@@ -619,6 +619,16 @@ class Quaternion {
  
  	}
  
@@ -666,10 +642,10 @@ index 6f38435..aaf4bd1 100644
  
  		this._x = array[ offset ];
 diff --git a/node_modules/three/src/math/Vector3.js b/node_modules/three/src/math/Vector3.js
-index 8ab4574..b8249e1 100644
+index 7b18ab3..fd1073c 100644
 --- a/node_modules/three/src/math/Vector3.js
 +++ b/node_modules/three/src/math/Vector3.js
-@@ -676,6 +676,15 @@ class Vector3 {
+@@ -643,6 +643,15 @@ class Vector3 {
  
  	}
  
@@ -686,7 +662,7 @@ index 8ab4574..b8249e1 100644
  
  		this.x = array[ offset ];
 diff --git a/node_modules/three/src/renderers/WebGLCubeRenderTarget.js b/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
-index a5a7ddd..800a13a 100644
+index 3f22ea3..f8f07d7 100644
 --- a/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
 +++ b/node_modules/three/src/renderers/WebGLCubeRenderTarget.js
 @@ -83,6 +83,7 @@ class WebGLCubeRenderTarget extends WebGLRenderTarget {
@@ -698,7 +674,7 @@ index a5a7ddd..800a13a 100644
  					gl_FragColor = texture2D( tEquirect, sampleUV );
  
 diff --git a/node_modules/three/src/renderers/WebGLRenderer.js b/node_modules/three/src/renderers/WebGLRenderer.js
-index 4669da7..dd2836d 100644
+index 5163705..401ed37 100644
 --- a/node_modules/three/src/renderers/WebGLRenderer.js
 +++ b/node_modules/three/src/renderers/WebGLRenderer.js
 @@ -17,6 +17,7 @@ import { Matrix4 } from '../math/Matrix4.js';
@@ -709,7 +685,7 @@ index 4669da7..dd2836d 100644
  import { WebGLAnimation } from './webgl/WebGLAnimation.js';
  import { WebGLAttributes } from './webgl/WebGLAttributes.js';
  import { WebGLBackground } from './webgl/WebGLBackground.js';
-@@ -54,6 +55,16 @@ function createCanvasElement() {
+@@ -55,6 +56,16 @@ function createCanvasElement() {
  
  }
  
@@ -726,7 +702,7 @@ index 4669da7..dd2836d 100644
  function WebGLRenderer( parameters = {} ) {
  
  	this.isWebGLRenderer = true;
-@@ -207,6 +218,9 @@ function WebGLRenderer( parameters = {} ) {
+@@ -186,6 +197,9 @@ function WebGLRenderer( parameters = {} ) {
  	const _vector2 = new Vector2();
  	const _vector3 = new Vector3();
  
@@ -736,7 +712,7 @@ index 4669da7..dd2836d 100644
  	const _emptyScene = { background: null, fog: null, environment: null, overrideMaterial: null, isScene: true };
  
  	function getTargetPixelRatio() {
-@@ -1207,6 +1221,14 @@ function WebGLRenderer( parameters = {} ) {
+@@ -1211,6 +1225,13 @@ function WebGLRenderer( parameters = {} ) {
  
  		currentRenderState.setupLightsView( camera );
  
@@ -747,11 +723,10 @@ index 4669da7..dd2836d 100644
 +			cubeuvmaps.get( reflectionProbes[ i ].texture );
 +
 +		}
-+
- 		if ( transmissiveObjects.length > 0 ) renderTransmissionPass( opaqueObjects, scene, camera );
+ 		if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, camera );
  
- 		if ( viewport ) state.viewport( _currentViewport.copy( viewport ) );
-@@ -1715,6 +1737,90 @@ function WebGLRenderer( parameters = {} ) {
+ 		if ( transmissiveObjects.length > 0 ) renderTransmissionPass( opaqueObjects, scene, camera );
+@@ -1722,6 +1743,90 @@ function WebGLRenderer( parameters = {} ) {
  
  		}
  
@@ -842,7 +817,7 @@ index 4669da7..dd2836d 100644
  		const morphAttributes = geometry.morphAttributes;
  
  		if ( morphAttributes.position !== undefined || morphAttributes.normal !== undefined || ( morphAttributes.color !== undefined && capabilities.isWebGL2 === true ) ) {
-@@ -1734,6 +1840,7 @@ function WebGLRenderer( parameters = {} ) {
+@@ -1750,6 +1855,7 @@ function WebGLRenderer( parameters = {} ) {
  		if ( refreshMaterial ) {
  
  			p_uniforms.setValue( _gl, 'toneMappingExposure', _this.toneMappingExposure );
@@ -942,12 +917,12 @@ index 5087a83..ba833db 100644
  vec3 CustomToneMapping( vec3 color ) { return color; }
  `;
 diff --git a/node_modules/three/src/renderers/shaders/ShaderLib.js b/node_modules/three/src/renderers/shaders/ShaderLib.js
-index 126df13..9e19b5f 100644
+index 3e628c0..a544f34 100644
 --- a/node_modules/three/src/renderers/shaders/ShaderLib.js
 +++ b/node_modules/three/src/renderers/shaders/ShaderLib.js
-@@ -75,7 +75,13 @@ const ShaderLib = {
+@@ -78,7 +78,13 @@ const ShaderLib = {
  
- 		uniforms: mergeUniforms( [
+ 		uniforms: /*@__PURE__*/ mergeUniforms( [
  			UniformsLib.common,
 -			UniformsLib.envmap,
 +			( () => {
@@ -961,10 +936,10 @@ index 126df13..9e19b5f 100644
  			UniformsLib.lightmap,
  			UniformsLib.emissivemap,
 diff --git a/node_modules/three/src/renderers/webgl/WebGLLights.js b/node_modules/three/src/renderers/webgl/WebGLLights.js
-index 7e7f0ce..0857430 100644
+index 2f0df97..2decc09 100644
 --- a/node_modules/three/src/renderers/webgl/WebGLLights.js
 +++ b/node_modules/three/src/renderers/webgl/WebGLLights.js
-@@ -174,6 +174,7 @@ function WebGLLights( extensions, capabilities ) {
+@@ -175,6 +175,7 @@ function WebGLLights( extensions, capabilities ) {
  
  		ambient: [ 0, 0, 0 ],
  		probe: [],
@@ -972,16 +947,16 @@ index 7e7f0ce..0857430 100644
  		directional: [],
  		directionalShadow: [],
  		directionalShadowMap: [],
-@@ -215,6 +216,8 @@ function WebGLLights( extensions, capabilities ) {
- 		let numPointShadows = 0;
- 		let numSpotShadows = 0;
+@@ -220,6 +221,8 @@ function WebGLLights( extensions, capabilities ) {
+ 		let numSpotMaps = 0;
+ 		let numSpotShadowsWithMaps = 0;
  
 +		let numReflectionProbes = 0;
 +
- 		lights.sort( shadowCastingLightsFirst );
+ 		// ordering : [shadow casting + map texturing, map texturing, shadow casting, none ]
+ 		lights.sort( shadowCastingAndTexturingLightsFirst );
  
- 		// artist-friendly light intensity scaling factor
-@@ -244,6 +247,10 @@ function WebGLLights( extensions, capabilities ) {
+@@ -250,6 +253,10 @@ function WebGLLights( extensions, capabilities ) {
  
  				}
  
@@ -992,7 +967,7 @@ index 7e7f0ce..0857430 100644
  			} else if ( light.isDirectionalLight ) {
  
  				const uniforms = cache.get( light );
-@@ -411,6 +418,8 @@ function WebGLLights( extensions, capabilities ) {
+@@ -427,6 +434,8 @@ function WebGLLights( extensions, capabilities ) {
  		state.ambient[ 1 ] = g;
  		state.ambient[ 2 ] = b;
  
@@ -1002,10 +977,10 @@ index 7e7f0ce..0857430 100644
  
  		if ( hash.directionalLength !== directionalLength ||
 diff --git a/node_modules/three/src/renderers/webgl/WebGLMaterials.js b/node_modules/three/src/renderers/webgl/WebGLMaterials.js
-index 188aa81..24d0d4f 100644
+index 2f249bb..d42728c 100644
 --- a/node_modules/three/src/renderers/webgl/WebGLMaterials.js
 +++ b/node_modules/three/src/renderers/webgl/WebGLMaterials.js
-@@ -173,7 +173,12 @@ function WebGLMaterials( renderer, properties ) {
+@@ -174,7 +174,12 @@ function WebGLMaterials( renderer, properties ) {
  
  		if ( envMap ) {
  
@@ -1020,10 +995,10 @@ index 188aa81..24d0d4f 100644
  			uniforms.flipEnvMap.value = ( envMap.isCubeTexture && envMap.isRenderTargetTexture === false ) ? - 1 : 1;
  
 diff --git a/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js b/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
-index b8d5fe6..f43bb48 100644
+index 4fb585a..73cd578 100644
 --- a/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
 +++ b/node_modules/three/src/renderers/webgl/WebGLMorphtargets.js
-@@ -48,7 +48,7 @@ function WebGLMorphtargets( gl, capabilities, textures ) {
+@@ -34,7 +34,7 @@ function WebGLMorphtargets( gl, capabilities, textures ) {
  
  		const objectInfluences = object.morphTargetInfluences;
  
@@ -1033,7 +1008,7 @@ index b8d5fe6..f43bb48 100644
  			// instead of using attributes, the WebGL 2 code path encodes morph targets
  			// into an array of data textures. Each layer represents a single morph target.
 diff --git a/node_modules/three/src/renderers/webgl/WebGLProgram.js b/node_modules/three/src/renderers/webgl/WebGLProgram.js
-index 5e9ee69..80b13ed 100644
+index 99fc10e..c300a1e 100644
 --- a/node_modules/three/src/renderers/webgl/WebGLProgram.js
 +++ b/node_modules/three/src/renderers/webgl/WebGLProgram.js
 @@ -1,7 +1,7 @@
@@ -1056,7 +1031,7 @@ index 5e9ee69..80b13ed 100644
  		default:
  			console.warn( 'THREE.WebGLProgram: Unsupported toneMapping:', toneMapping );
  			toneMappingName = 'Linear';
-@@ -511,10 +515,13 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
+@@ -506,10 +510,13 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
  
  			parameters.morphTargets ? '#define USE_MORPHTARGETS' : '',
  			parameters.morphNormals && parameters.flatShading === false ? '#define USE_MORPHNORMALS' : '',
@@ -1074,7 +1049,7 @@ index 5e9ee69..80b13ed 100644
  			parameters.doubleSided ? '#define DOUBLE_SIDED' : '',
  			parameters.flipSided ? '#define FLIP_SIDED' : '',
  
-@@ -688,6 +695,7 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
+@@ -683,6 +690,7 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
  			'uniform bool isOrthographic;',
  
  			( parameters.toneMapping !== NoToneMapping ) ? '#define TONE_MAPPING' : '',
@@ -1083,10 +1058,10 @@ index 5e9ee69..80b13ed 100644
  			( parameters.toneMapping !== NoToneMapping ) ? getToneMappingFunction( 'toneMapping', parameters.toneMapping ) : '',
  
 diff --git a/node_modules/three/src/renderers/webgl/WebGLState.js b/node_modules/three/src/renderers/webgl/WebGLState.js
-index dff3fb2..85fd4c6 100644
+index e5d08fa..390a490 100644
 --- a/node_modules/three/src/renderers/webgl/WebGLState.js
 +++ b/node_modules/three/src/renderers/webgl/WebGLState.js
-@@ -928,11 +928,27 @@ function WebGLState( gl, extensions, capabilities ) {
+@@ -938,11 +938,27 @@ function WebGLState( gl, extensions, capabilities ) {
  
  	}
  
@@ -1116,7 +1091,7 @@ index dff3fb2..85fd4c6 100644
  
  		} catch ( error ) {
  
-@@ -1012,11 +1028,19 @@ function WebGLState( gl, extensions, capabilities ) {
+@@ -1050,11 +1066,19 @@ function WebGLState( gl, extensions, capabilities ) {
  
  	}
  
@@ -1138,7 +1113,7 @@ index dff3fb2..85fd4c6 100644
  
  		} catch ( error ) {
  
-@@ -1026,11 +1050,19 @@ function WebGLState( gl, extensions, capabilities ) {
+@@ -1064,11 +1088,19 @@ function WebGLState( gl, extensions, capabilities ) {
  
  	}
  
@@ -1160,16 +1135,3 @@ index dff3fb2..85fd4c6 100644
  
  		} catch ( error ) {
  
-diff --git a/node_modules/three/src/renderers/webxr/WebXRManager.js b/node_modules/three/src/renderers/webxr/WebXRManager.js
-index 308be47..3539221 100644
---- a/node_modules/three/src/renderers/webxr/WebXRManager.js
-+++ b/node_modules/three/src/renderers/webxr/WebXRManager.js
-@@ -506,6 +506,8 @@ class WebXRManager extends EventDispatcher {
- 			camera.quaternion.copy( cameraVR.quaternion );
- 			camera.scale.copy( cameraVR.scale );
- 			camera.matrix.copy( cameraVR.matrix );
-+			camera.matrix.decompose( camera.position, camera.quaternion, camera.scale );
-+
- 			camera.matrixWorld.copy( cameraVR.matrixWorld );
- 
- 			const children = camera.children;
