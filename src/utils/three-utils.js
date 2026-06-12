@@ -371,6 +371,11 @@ import { MediaVideo } from "../bit-components";
 import { Text } from "troika-three-text";
 
 // This code is from three-vrm. We will likely be using that in the future and this inlined code can go away
+// UPGRADE [VRM]: VRM avatars are loaded by the stock GLTFLoader (no `three-vrm` dependency) and then
+// post-processed here by indexing bone-weight / skin-index arrays directly. Malformed VRM skin data
+// can index out of bounds here (a suspected source of the avatar-injection crash). Adopting the real
+// `three-vrm` package (which validates VRM) + a newer GLTFLoader is the durable fix. See
+// doc/renderer-rebase-plan.md.
 function excludeTriangles(triangles, bws, skinIndex, exclude) {
   let count = 0;
   if (bws != null && bws.length > 0) {

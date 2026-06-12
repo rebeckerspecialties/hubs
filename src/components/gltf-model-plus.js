@@ -513,7 +513,7 @@ class GLTFHubsPlugin {
     gltf.scene.traverse(object => {
       // GLTFLoader sets matrixAutoUpdate on animated objects, we want to keep the defaults
       // @TODO: Should this be fixed in the gltf loader?
-      object.matrixAutoUpdate = THREE.Object3D.DefaultMatrixAutoUpdate;
+      object.matrixAutoUpdate = THREE.Object3D.DEFAULT_MATRIX_AUTO_UPDATE;
       convertStandardMaterialsIfNeeded(object);
     });
 

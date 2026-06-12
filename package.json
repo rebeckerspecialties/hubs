@@ -137,7 +137,7 @@
     "sdp-transform": "^2.14.1",
     "semver": "^7.3.2",
     "stream-browserify": "^3.0.0",
-    "three": "^0.141.0",
+    "three": "^0.149.0",
     "three-ammo": "github:hubs-foundation/three-ammo",
     "three-gltf-extensions": "^0.0.14",
     "three-mesh-bvh": "^0.3.7",

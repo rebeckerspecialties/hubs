@@ -21,7 +21,11 @@ export function inflateReflectionProbe(world: HubsWorld, eid: number, componentP
   const box = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3().setScalar(size * 2));
 
   addComponent(world, ReflectionProbe, eid);
-  // TODO: Add ReflectionProbe to three.js type defs
+  // UPGRADE [Option C]: THREE.ReflectionProbe is a Hubs-only addition carried in
+  // patches/three+0.150.0.patch (box-projected env-map blending in WebGLRenderer). It has no
+  // upstream equivalent, so it must be reimplemented on stock primitives (light probes / baked
+  // env maps) before this patch can be dropped. The `as any` cast exists because the type isn't
+  // in @types/three. See doc/renderer-rebase-plan.md.
   const probe = new (THREE as any).ReflectionProbe(box, envMapTexture);
   addObject3DComponent(world, eid, probe);
 

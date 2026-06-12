@@ -33,7 +33,7 @@ import "./utils/aframe-overrides";
 // So we disable it here.
 import * as THREE from "three";
 THREE.Cache.enabled = false;
-THREE.Object3D.DefaultMatrixAutoUpdate = false;
+THREE.Object3D.DEFAULT_MATRIX_AUTO_UPDATE = false;
 
 import "./utils/logging";
 import { patchWebGLRenderingContext } from "./utils/webgl";
